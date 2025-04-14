@@ -160,7 +160,7 @@ class VoiceService : Service() {
                 isProcessingHotword = true
 
                 if (ttsInitialized) {
-                    textToSpeech.speak("Hi broooo", TextToSpeech.QUEUE_FLUSH, null, null)
+                    textToSpeech.speak("Hello StarCy", TextToSpeech.QUEUE_FLUSH, null, null)
                 }
 
                 val launchIntent = Intent(applicationContext, MainActivity::class.java).apply {

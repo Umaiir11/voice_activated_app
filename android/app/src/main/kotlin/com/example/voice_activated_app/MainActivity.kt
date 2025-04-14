@@ -55,7 +55,7 @@ class MainActivity : FlutterActivity() {
     }
 
     private fun showHotwordDetectedToast() {
-        Toast.makeText(this, "Hey! I'm listening 👂", Toast.LENGTH_SHORT).show()
+        Toast.makeText(this, "Hey! StarCy I'm listening 👂", Toast.LENGTH_SHORT).show()
     }
 
     private fun checkAndRequestPermissions() {
