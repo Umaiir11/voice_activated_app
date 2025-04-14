@@ -1,27 +1,30 @@
 package com.example.voice_activated_app
 
-import android.app.Service
-import android.content.Intent
-import android.os.IBinder
-import android.speech.RecognitionListener
-import android.speech.RecognizerIntent
-import android.speech.SpeechRecognizer
-import android.util.Log
 import android.app.Notification
 import android.app.NotificationChannel
 import android.app.NotificationManager
 import android.app.PendingIntent
+import android.app.Service
 import android.content.Context
+import android.content.Intent
 import android.os.Build
 import android.os.Bundle
 import android.os.Handler
+import android.os.IBinder
 import android.os.Looper
 import android.os.PowerManager
+import android.speech.RecognitionListener
+import android.speech.RecognizerIntent
+import android.speech.SpeechRecognizer
+import android.speech.tts.TextToSpeech
+import android.util.Log
 import androidx.core.app.NotificationCompat
+import java.util.Locale
 
 class VoiceService : Service() {
     private lateinit var speechRecognizer: SpeechRecognizer
     private lateinit var recognizerIntent: Intent
+    private lateinit var textToSpeech: TextToSpeech
     private val handler = Handler(Looper.getMainLooper())
     private lateinit var wakeLock: PowerManager.WakeLock
     private val TAG = "VoiceService"
@@ -30,6 +33,7 @@ class VoiceService : Service() {
         super.onCreate()
         startForegroundService()
         initWakeLock()
+        initTextToSpeech()
         initSpeechRecognizer()
     }
 
@@ -40,6 +44,19 @@ class VoiceService : Service() {
             "VoiceActivatedApp:VoiceWakeLock"
         )
         wakeLock.acquire(10*60*1000L) // 10 minutes
+    }
+
+    private fun initTextToSpeech() {
+        textToSpeech = TextToSpeech(applicationContext) { status ->
+            if (status == TextToSpeech.SUCCESS) {
+                val result = textToSpeech.setLanguage(Locale.US)
+                if (result == TextToSpeech.LANG_MISSING_DATA || result == TextToSpeech.LANG_NOT_SUPPORTED) {
+                    Log.e(TAG, "Language not supported")
+                }
+            } else {
+                Log.e(TAG, "TTS initialization failed")
+            }
+        }
     }
 
     private fun startForegroundService() {
@@ -96,11 +113,25 @@ class VoiceService : Service() {
             private fun processResults(matches: ArrayList<String>?) {
                 matches?.forEach { match ->
                     Log.d(TAG, "Speech detected: $match")
-                    if (match.lowercase().contains("hey my app")) {
+                    if (match.lowercase().contains("hey my app") || match.lowercase().contains("my app")) {
                         Log.d(TAG, "Hotword detected! Opening app...")
-                        val launchIntent = packageManager.getLaunchIntentForPackage(packageName)
-                        launchIntent?.addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
-                        startActivity(launchIntent)
+
+                        // Speak the greeting
+                        textToSpeech.speak("Hi bruh", TextToSpeech.QUEUE_FLUSH, null, "greeting_id")
+
+                        // Create an explicit intent for your main activity
+                        val intent = Intent(applicationContext, MainActivity::class.java).apply {
+                            addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
+                            addFlags(Intent.FLAG_ACTIVITY_CLEAR_TOP)
+                            addFlags(Intent.FLAG_ACTIVITY_SINGLE_TOP)
+                        }
+
+                        try {
+                            startActivity(intent)
+                            Log.d(TAG, "Intent started successfully")
+                        } catch (e: Exception) {
+                            Log.e(TAG, "Error starting activity", e)
+                        }
                     }
                 }
                 // Restart listening after a short delay
@@ -159,6 +190,10 @@ class VoiceService : Service() {
         super.onDestroy()
         if (::speechRecognizer.isInitialized) {
             speechRecognizer.destroy()
+        }
+        if (::textToSpeech.isInitialized) {
+            textToSpeech.stop()
+            textToSpeech.shutdown()
         }
         if (::wakeLock.isInitialized && wakeLock.isHeld) {
             wakeLock.release()
