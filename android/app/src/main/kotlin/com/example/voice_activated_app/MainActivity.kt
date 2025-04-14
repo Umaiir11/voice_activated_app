@@ -5,47 +5,80 @@ import android.content.Intent
 import android.content.pm.PackageManager
 import android.os.Build
 import android.os.Bundle
+import android.widget.Toast
 import androidx.core.app.ActivityCompat
 import androidx.core.content.ContextCompat
 import io.flutter.embedding.android.FlutterActivity
 import io.flutter.plugin.common.MethodChannel
 
-class MainActivity: FlutterActivity() {
+class MainActivity : FlutterActivity() {
     private val CHANNEL = "voice_trigger_channel"
     private val PERMISSION_REQUEST_CODE = 123
 
+    private var pendingResult: MethodChannel.Result? = null
+
     override fun configureFlutterEngine(flutterEngine: io.flutter.embedding.engine.FlutterEngine) {
         super.configureFlutterEngine(flutterEngine)
-        MethodChannel(flutterEngine.dartExecutor.binaryMessenger, CHANNEL).setMethodCallHandler {
-                call, result ->
-            if (call.method == "startService") {
-                checkAndRequestPermissions(result)
-            } else {
-                result.notImplemented()
+
+        MethodChannel(flutterEngine.dartExecutor.binaryMessenger, CHANNEL).setMethodCallHandler { call, result ->
+            when (call.method) {
+                "startService" -> {
+                    pendingResult = result
+                    checkAndRequestPermissions()
+                }
+
+                else -> {
+                    result.notImplemented()
+                }
             }
         }
     }
 
-    private fun checkAndRequestPermissions(result: MethodChannel.Result) {
-        val permissions = mutableListOf(
-            Manifest.permission.RECORD_AUDIO
-        )
+    override fun onCreate(savedInstanceState: Bundle?) {
+        super.onCreate(savedInstanceState)
+        handleIntent(intent)
+    }
 
-        // Add notification permission for Android 13+
+    override fun onNewIntent(intent: Intent) {
+        super.onNewIntent(intent)
+        handleIntent(intent)
+    }
+
+    private fun handleIntent(intent: Intent?) {
+        if (intent?.action == "HOTWORD_DETECTED") {
+            showHotwordDetectedToast()
+
+            getFlutterEngine()?.dartExecutor?.binaryMessenger?.let { messenger ->
+                MethodChannel(messenger, CHANNEL).invokeMethod("onHotwordDetected", null)
+            }
+        }
+    }
+
+    private fun showHotwordDetectedToast() {
+        Toast.makeText(this, "Hey! I'm listening 👂", Toast.LENGTH_SHORT).show()
+    }
+
+    private fun checkAndRequestPermissions() {
+        val permissions = mutableListOf(Manifest.permission.RECORD_AUDIO)
+
         if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU) {
             permissions.add(Manifest.permission.POST_NOTIFICATIONS)
         }
 
         val permissionsToRequest = permissions.filter {
             ContextCompat.checkSelfPermission(this, it) != PackageManager.PERMISSION_GRANTED
-        }.toTypedArray()
+        }
 
         if (permissionsToRequest.isEmpty()) {
             startVoiceService()
-            result.success("Service Started")
+            pendingResult?.success("Service Started")
+            pendingResult = null
         } else {
-            ActivityCompat.requestPermissions(this, permissionsToRequest, PERMISSION_REQUEST_CODE)
-            result.success("Requesting Permissions")
+            ActivityCompat.requestPermissions(
+                this,
+                permissionsToRequest.toTypedArray(),
+                PERMISSION_REQUEST_CODE
+            )
         }
     }
 
@@ -64,10 +97,15 @@ class MainActivity: FlutterActivity() {
         grantResults: IntArray
     ) {
         super.onRequestPermissionsResult(requestCode, permissions, grantResults)
+
         if (requestCode == PERMISSION_REQUEST_CODE) {
             if (grantResults.isNotEmpty() && grantResults.all { it == PackageManager.PERMISSION_GRANTED }) {
                 startVoiceService()
+                pendingResult?.success("Service Started After Permission")
+            } else {
+                pendingResult?.error("PERMISSION_DENIED", "Required permissions not granted", null)
             }
+            pendingResult = null
         }
     }
 }
